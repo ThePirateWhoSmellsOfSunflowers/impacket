@@ -337,7 +337,7 @@ class AP_REQ(univ.Sequence):
         _sequence_component('authenticator', 4, EncryptedData())
         )
 
-class AP_REP(univ.Sequence):EncryptionKeys
+class AP_REP(univ.Sequence):
     tagSet = _application_tag(constants.ApplicationTagNumbers.AP_REP.value)
     componentType = namedtype.NamedTypes(
         _vno_component(0),
@@ -524,7 +524,7 @@ class KERB_KEY_LIST_REP(EncryptionKeys):
     pass
 
 # https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-kile/87f5f362-e53c-4949-9a6c-bc9184054517
-class KERB_DMSA_KEY_PACKAGE(Univ.Sequence):
+class KERB_DMSA_KEY_PACKAGE(univ.Sequence):
     componentType = namedtype.NamedTypes(
         _sequence_component('current-keys', 0, KERB_KEY_LIST_REP()),
         _sequence_component('previous-keys', 1, KERB_KEY_LIST_REP()),
@@ -533,25 +533,25 @@ class KERB_DMSA_KEY_PACKAGE(Univ.Sequence):
     )
 
 # https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-kile/79170b21-ad15-4a1b-99c4-84b3992d9e70
-class KERB_SUPERSEDED_BY_USER(Univ.Sequence):
+class KERB_SUPERSEDED_BY_USER(univ.Sequence):
         componentType = namedtype.NamedTypes(
         _sequence_component('names', 0, PrincipalName()),
         _sequence_component('realm', 1, Realm())
     )
 
 # https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-sfu/cd9d5ca7-ce20-4693-872b-2f5dd41cbff6
-class PA_S4U_X509_USER(Univ.Sequence):
-    componentType = namedtype.NamedTypes(
-        _sequence_component('user-id', 0, S4UUserID()),
-        _sequence_component('checksum', 1, Checksum())
-    )
-
-# https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-sfu/cd9d5ca7-ce20-4693-872b-2f5dd41cbff6
-class S4UUserID(Univ.Sequence):
+class S4UUserID(univ.Sequence):
     componentType = namedtype.NamedTypes(
         _sequence_component('nonce', 0, Int32()),
         _sequence_optional_component('cname', 1, PrincipalName()),
         _sequence_component('crealm', 2, Realm()),
         _sequence_optional_component('subject-certificate', 4, univ.OctetString()),
         _sequence_optional_component('options', 4, univ.BitString())
+    )
+
+# https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-sfu/cd9d5ca7-ce20-4693-872b-2f5dd41cbff6
+class PA_S4U_X509_USER(univ.Sequence):
+    componentType = namedtype.NamedTypes(
+        _sequence_component('user-id', 0, S4UUserID()),
+        _sequence_component('checksum', 1, Checksum())
     )
