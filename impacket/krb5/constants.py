@@ -102,6 +102,8 @@ class PreAuthenticationDataTypes(Enum):
     TD_APP_DEFINED_ERROR       = 106
     TD_REQ_NONCE               = 107
     TD_REQ_SEQ                 = 108
+    TD_CMS_DIGEST_ALGORITHMS   = 111
+	TD_CERT_DIGEST_ALGORITHMS  = 112
     PA_PAC_REQUEST             = 128
     PA_FOR_USER                = 129
     PA_FX_COOKIE               = 133 
@@ -112,6 +114,8 @@ class PreAuthenticationDataTypes(Enum):
     KERB_KEY_LIST_REP          = 162
     PA_SUPPORTED_ENCTYPES      = 165
     PA_PAC_OPTIONS             = 167
+    SUPERSEDED_BY_USER         = 170
+	DMSA_KEY_PACKAGE           = 171
 
 class AddressType(Enum):
     IPv4            = 2
