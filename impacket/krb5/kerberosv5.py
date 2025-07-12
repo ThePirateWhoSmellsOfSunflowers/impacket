@@ -21,6 +21,7 @@ import datetime
 import random
 import socket
 import struct
+import sys
 
 from pyasn1.codec.der import decoder, encoder
 from pyasn1.error import PyAsn1Error
@@ -31,12 +32,12 @@ from binascii import unhexlify, hexlify
 
 from impacket.krb5.asn1 import AS_REQ, AP_REQ, TGS_REQ, KERB_PA_PAC_REQUEST, KRB_ERROR, PA_ENC_TS_ENC, AS_REP, TGS_REP, \
     EncryptedData, Authenticator, EncASRepPart, EncTGSRepPart, seq_set, seq_set_iter, KERB_ERROR_DATA, METHOD_DATA, \
-    ETYPE_INFO2, ETYPE_INFO, AP_REP, EncAPRepPart
+    ETYPE_INFO2, ETYPE_INFO, AP_REP, EncAPRepPart, S4UUserID
 from impacket.krb5.types import KerberosTime, Principal, Ticket
 from impacket.krb5.gssapi import CheckSumField, GSS_C_DCE_STYLE, GSS_C_MUTUAL_FLAG, GSS_C_REPLAY_FLAG, \
     GSS_C_SEQUENCE_FLAG, GSS_C_CONF_FLAG, GSS_C_INTEG_FLAG
 from impacket.krb5 import constants
-from impacket.krb5.crypto import Key, _enctype_table, InvalidChecksum
+from impacket.krb5.crypto import Key, _enctype_table, InvalidChecksum, Cksumtype, _SHA1AES256
 from impacket.smbconnection import SessionError
 from impacket.spnego import SPNEGO_NegTokenInit, TypesMech, SPNEGO_NegTokenResp, ASN1_OID, asn1encode, ASN1_AID
 from impacket.krb5.gssapi import KRB5_AP_REQ
@@ -442,6 +443,123 @@ def getKerberosTGS(serverName, domain, kdcHost, tgt, cipher, sessionKey, renew =
 
     reqBody['till'] = KerberosTime.to_asn1(now)
     reqBody['nonce'] = rand.getrandbits(31)
+    seq_set_iter(reqBody, 'etype',
+                      (
+                          int(constants.EncryptionTypes.rc4_hmac.value),
+                          int(constants.EncryptionTypes.des3_cbc_sha1_kd.value),
+                          int(constants.EncryptionTypes.des_cbc_md5.value),
+                          int(cipher.enctype)
+                       )
+                )
+
+    message = encoder.encode(tgsReq)
+
+    r = sendReceive(message, domain, kdcHost)
+
+    # Get the session key
+
+    tgs = decoder.decode(r, asn1Spec = TGS_REP())[0]
+
+    cipherText = tgs['enc-part']['cipher']
+
+    # Key Usage 8
+    # TGS-REP encrypted part (includes application session
+    # key), encrypted with the TGS session key (Section 5.4.2)
+    plainText = cipher.decrypt(sessionKey, 8, cipherText)
+
+    encTGSRepPart = decoder.decode(plainText, asn1Spec = EncTGSRepPart())[0]
+
+    newSessionKey = Key(encTGSRepPart['key']['keytype'], encTGSRepPart['key']['keyvalue'].asOctets())
+    # Creating new cipher based on received keytype
+    cipher = _enctype_table[encTGSRepPart['key']['keytype']]
+
+    # Check we've got what we asked for
+    res = decoder.decode(r, asn1Spec = TGS_REP())[0]
+    spn = Principal()
+    spn.from_asn1(res['ticket'], 'realm', 'sname')
+
+    if spn.components[0] == serverName.components[0]:
+        # Yes.. bye bye
+        return r, cipher, sessionKey, newSessionKey
+    else:
+        # Let's extract the Ticket, change the domain and keep asking
+        domain = spn.components[1]
+        return getKerberosTGS(serverName, domain, kdcHost, r, cipher, newSessionKey)
+
+def getDMSA(serverName, domain, kdcHost, tgt, cipher, sessionKey, renew = False):
+
+    # Decode the TGT
+    try:
+        decodedTGT = decoder.decode(tgt, asn1Spec = AS_REP())[0]
+    except:
+        decodedTGT = decoder.decode(tgt, asn1Spec = TGS_REP())[0]
+
+    domain = domain.upper()
+    # Extract the ticket from the TGT
+    ticket = Ticket()
+    ticket.from_asn1(decodedTGT['ticket'])
+
+    authenticator = Authenticator()
+    authenticator['authenticator-vno'] = 5
+    authenticator['crealm'] = decodedTGT['crealm'].asOctets()
+    clientName = Principal()
+    clientName.from_asn1( decodedTGT, 'crealm', 'cname')
+    seq_set(authenticator, 'cname', clientName.components_to_asn1)
+    now = datetime.datetime.now(datetime.timezone.utc)
+    authenticator['cusec'] =  now.microsecond
+    authenticator['ctime'] = KerberosTime.to_asn1(now)
+
+    apReq = AP_REQ()
+    apReq['pvno'] = 5
+    apReq['msg-type'] = int(constants.ApplicationTagNumbers.AP_REQ.value)
+    opts = list()
+    apReq['ap-options'] =  constants.encodeFlags(opts)
+    seq_set(apReq,'ticket', ticket.to_asn1)
+
+    encodedAuthenticator = encoder.encode(authenticator)
+
+    # Key Usage 7
+    # TGS-REQ PA-TGS-REQ padata AP-REQ Authenticator (includes
+    # TGS authenticator subkey), encrypted with the TGS session
+    # key (Section 5.5.1)
+    encryptedEncodedAuthenticator = cipher.encrypt(sessionKey, 7, encodedAuthenticator, None)
+
+    apReq['authenticator'] = noValue
+    apReq['authenticator']['etype'] = cipher.enctype
+    apReq['authenticator']['cipher'] = encryptedEncodedAuthenticator
+
+    encodedApReq = encoder.encode(apReq)
+
+    tgsReq = TGS_REQ()
+
+    tgsReq['pvno'] =  5
+    tgsReq['msg-type'] = int(constants.ApplicationTagNumbers.TGS_REQ.value)
+    tgsReq['padata'] = noValue
+    tgsReq['padata'][0] = noValue
+    tgsReq['padata'][0]['padata-type'] = int(constants.PreAuthenticationDataTypes.PA_TGS_REQ.value)
+    tgsReq['padata'][0]['padata-value'] = encodedApReq
+
+    userid = S4UUserID()
+    userid['nonce'] = rand.getrandbits(31)
+    userid['cname'] = Principal(user_to_impersonate, type=constants.PrincipalNameType.NT_PRINCIPAL.value)
+    userid['crealm'] = domain
+    userid['subject-certificate'] = noValue
+    userid['options'] = 0x28000000
+
+    # TODO : other
+    if sessionKey.enctype == 18:
+        checksum_type = Cksumtype.SHA1_AES256
+        chksum_data =  _SHA1AES256.checksum(sessionKey, 26, userid)
+    else:
+        sys.exit()
+
+    seq_set(reqBody, 'sname', serverName.components_to_asn1)
+    reqBody['realm'] = domain
+
+    now = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=1)
+
+    reqBody['till'] = KerberosTime.to_asn1(now)
+    
     seq_set_iter(reqBody, 'etype',
                       (
                           int(constants.EncryptionTypes.rc4_hmac.value),
