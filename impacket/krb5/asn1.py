@@ -545,7 +545,7 @@ class S4UUserID(univ.Sequence):
         _sequence_component('nonce', 0, Int32()),
         _sequence_optional_component('cname', 1, PrincipalName()),
         _sequence_component('crealm', 2, Realm()),
-        _sequence_optional_component('subject-certificate', 4, univ.OctetString()),
+        _sequence_optional_component('subject-certificate', 3, univ.OctetString()),
         _sequence_optional_component('options', 4, univ.BitString())
     )
 
