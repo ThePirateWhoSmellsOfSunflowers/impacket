@@ -592,7 +592,7 @@ class GETST:
         apReq['msg-type'] = int(constants.ApplicationTagNumbers.AP_REQ.value)
 
         opts = list()
-        apReq['ap-options'] = constants.encodeFlags(opts)
+        #apReq['ap-options'] = constants.encodeFlags(opts, 1)
         seq_set(apReq, 'ticket', ticketTGT.to_asn1)
 
         authenticator = Authenticator()
@@ -685,7 +685,7 @@ class GETST:
         apReq['msg-type'] = int(constants.ApplicationTagNumbers.AP_REQ.value)
 
         opts = list()
-        apReq['ap-options'] = constants.encodeFlags(opts)
+        apReq['ap-options'] = constants.encodeFlags(opts, 1)
         seq_set(apReq, 'ticket', ticket.to_asn1)
 
         authenticator = Authenticator()
@@ -736,7 +736,7 @@ class GETST:
         clientName = Principal(self.__options.impersonate, type=constants.PrincipalNameType.NT_PRINCIPAL.value)
 
         nonce = random.getrandbits(31)
-        nonce = 1612047424
+        #nonce = 1612047424
 
         paS4Ux509 = PA_S4U_X509_USER()
         paS4Ux509['user-id']['nonce'] = nonce
@@ -750,6 +750,7 @@ class GETST:
 
         encoded = encoder.encode(paS4Ux509['user-id'])
         encoded = encoded.replace(b'\x03\x05\x02\xa0',b'\x03\x05\x00\x28')
+        encoded = encoded[2:]
 
         print(sessionKey.enctype)
 
@@ -791,7 +792,11 @@ class GETST:
 
         tgsReq['padata'][2] = noValue
         tgsReq['padata'][2]['padata-type'] = int(constants.PreAuthenticationDataTypes.PA_PAC_OPTIONS.value)
-        tgsReq['padata'][2]['padata-value'] = encoder.encode(paPacOptions)
+        paPacOptions = b'\x30\x06\xa0\x04\x03\x02\x06\x40'
+        print('lol')
+        print(paPacOptions)
+        #tgsReq['padata'][2]['padata-value'] = encoder.encode(paPacOptions)
+        tgsReq['padata'][2]['padata-value'] = paPacOptions
 
         reqBody = seq_set(tgsReq, 'req-body')
 
@@ -799,7 +804,7 @@ class GETST:
         opts.append(constants.KDCOptions.forwardable.value)
         opts.append(constants.KDCOptions.renewable.value)
         opts.append(constants.KDCOptions.canonicalize.value)
-        reqBody['kdc-options'] = constants.encodeFlags(opts)
+        reqBody['kdc-options'] = constants.encodeFlags(opts, 16)
 
         serverName = Principal(self.__options.spn, type=constants.PrincipalNameType.NT_SRV_INST.value)
 
@@ -821,7 +826,8 @@ class GETST:
         message = encoder.encode(tgsReq)
 
         r = sendReceive(message, self.__domain, kdcHost)
-
+        import sys
+        sys.exit()
         tgs = decoder.decode(r, asn1Spec=TGS_REP())[0]
 
         if self.__no_s4u2proxy:
